@@ -471,17 +471,38 @@ if (NOT INTERN_BUILD_MOBILE OR NOT BUILD_CAFFE2_MOBILE)
     ${TORCH_SRC_DIR}/csrc/jit/api/function.cpp
     ${TORCH_SRC_DIR}/csrc/jit/runtime/vararg_functions.cpp
 
-    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/mem_arena.cpp
     ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/codegen.cpp
-    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/expr.cpp
     ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/eval.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/expr.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/function.cpp
     ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir.cpp
-    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir_visitor.cpp
-    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/types.cpp
-    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir_printer.cpp
     ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir_mutator.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir_printer.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/ir_visitor.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/kernel.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/llvm_codegen.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/llvm_jit.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/mem_arena.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/schedule.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/tensor.cpp
+    ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/types.cpp
     ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/unique_name_manager.cpp
     )
+
+  if (USE_LLVM)
+    message(STATUS "Looking for LLVM in ${USE_LLVM}")
+    find_package(LLVM QUIET PATHS ${USE_LLVM} NO_DEFAULT_PATH)
+
+    if (LLVM_FOUND)
+      message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+      message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+      include_directories(${LLVM_INCLUDE_DIRS})
+      add_definitions(-DENABLE_LLVM ${LLVM_DEFINITIONS})
+    endif (LLVM_FOUND)
+  endif (USE_LLVM)
+
+  set_source_files_properties(${TORCH_SRC_DIR}/csrc/jit/tensorexpr/llvm_jit.cpp PROPERTIES COMPILE_FLAGS -fno-rtti)
 
   if (NOT INTERN_DISABLE_MOBILE_INTERP)
     set (MOBILE_SRCS
@@ -552,6 +573,7 @@ if (NOT INTERN_BUILD_MOBILE OR NOT BUILD_CAFFE2_MOBILE)
       ${TORCH_SRC_DIR}/csrc/autograd/profiler_cuda.cpp
       ${TORCH_SRC_DIR}/csrc/autograd/functions/comm.cpp
       ${TORCH_SRC_DIR}/csrc/cuda/comm.cpp
+      ${TORCH_SRC_DIR}/csrc/jit/tensorexpr/cuda_codegen.cpp
     )
     add_library(caffe2_nvrtc SHARED ${ATen_NVRTC_STUB_SRCS})
     target_link_libraries(caffe2_nvrtc ${CUDA_NVRTC} ${CUDA_CUDA_LIB} ${CUDA_NVRTC_LIB})
@@ -648,6 +670,13 @@ endif()
 
 add_library(torch_cpu ${Caffe2_CPU_SRCS})
 torch_compile_options(torch_cpu)  # see cmake/public/utils.cmake
+
+if (LLVM_FOUND)
+  llvm_map_components_to_libnames(LLVM_LINK_LIBS
+    support core analysis executionengine instcombine
+    scalaropts transformutils native orcjit)
+  target_link_libraries(torch_cpu PRIVATE ${LLVM_LINK_LIBS})
+endif (LLVM_FOUND)
 
 # This is required for older versions of CMake, which don't allow
 # specifying add_library() without a list of source files
